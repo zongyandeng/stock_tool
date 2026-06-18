@@ -13,31 +13,62 @@ export const OptimizerPage: React.FC = () => {
   const { brokers, activeBroker, saveTrade, trades } = useDb();
 
   // 股票查詢
-  const [symbol, setSymbol] = useState<string>('');
-  const [priceInfo, setPriceInfo] = useState<PriceInfo | null>(null);
+  const [symbol, setSymbol] = useState<string>(() => sessionStorage.getItem('opt_symbol') || '');
+  const [priceInfo, setPriceInfo] = useState<PriceInfo | null>(() => {
+    try {
+      const val = sessionStorage.getItem('opt_priceInfo');
+      return val ? JSON.parse(val) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isLoadingPrice, setIsLoadingPrice] = useState<boolean>(false);
   const [priceError, setPriceError] = useState<string>('');
-  const [isManualPrice, setIsManualPrice] = useState<boolean>(false);
+  const [isManualPrice, setIsManualPrice] = useState<boolean>(() => sessionStorage.getItem('opt_isManualPrice') === 'true');
 
   // 試算輸入
-  const [currentQty, setCurrentQty] = useState<number>(0);
-  const [currentAvgPrice, setCurrentAvgPrice] = useState<number>(0);
-  const [targetPrice, setTargetPrice] = useState<number>(0); // Pc (試算時用的股價)
-  const [budget, setBudget] = useState<number>(100000); // 預設 10 萬元
-  const [selectedBrokerId, setSelectedBrokerId] = useState<string>('');
+  const [currentQty, setCurrentQty] = useState<number>(() => parseInt(sessionStorage.getItem('opt_currentQty') || '0'));
+  const [currentAvgPrice, setCurrentAvgPrice] = useState<number>(() => parseFloat(sessionStorage.getItem('opt_currentAvgPrice') || '0'));
+  const [targetPrice, setTargetPrice] = useState<number>(() => parseFloat(sessionStorage.getItem('opt_targetPrice') || '0')); // Pc (試算時用的股價)
+  const [budget, setBudget] = useState<number>(() => parseInt(sessionStorage.getItem('opt_budget') || '100000')); // 預設 10 萬元
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string>(() => sessionStorage.getItem('opt_selectedBrokerId') || '');
   
   // 試算結果
-  const [optResult, setOptResult] = useState<OptimizationResult | null>(null);
+  const [optResult, setOptResult] = useState<OptimizationResult | null>(() => {
+    try {
+      const val = sessionStorage.getItem('opt_optResult');
+      return val ? JSON.parse(val) : null;
+    } catch {
+      return null;
+    }
+  });
   const [showAllCandidates, setShowAllCandidates] = useState<boolean>(false);
   
   // 記帳備忘
-  const [noteText, setNoteText] = useState<string>('');
+  const [noteText, setNoteText] = useState<string>(() => sessionStorage.getItem('opt_noteText') || '');
   const [showSuccessToast, setShowSuccessToast] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
 
+  // 當狀態變更時，將試算狀態寫入 sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('opt_symbol', symbol);
+    sessionStorage.setItem('opt_priceInfo', priceInfo ? JSON.stringify(priceInfo) : '');
+    sessionStorage.setItem('opt_isManualPrice', String(isManualPrice));
+    sessionStorage.setItem('opt_currentQty', String(currentQty));
+    sessionStorage.setItem('opt_currentAvgPrice', String(currentAvgPrice));
+    sessionStorage.setItem('opt_targetPrice', String(targetPrice));
+    sessionStorage.setItem('opt_budget', String(budget));
+    sessionStorage.setItem('opt_selectedBrokerId', selectedBrokerId);
+    sessionStorage.setItem('opt_optResult', optResult ? JSON.stringify(optResult) : '');
+    sessionStorage.setItem('opt_noteText', noteText);
+  }, [symbol, priceInfo, isManualPrice, currentQty, currentAvgPrice, targetPrice, budget, selectedBrokerId, optResult, noteText]);
+
   // 初始化選擇券商
   useEffect(() => {
-    if (activeBroker) {
+    const saved = sessionStorage.getItem('opt_selectedBrokerId');
+    if (saved) {
+      setSelectedBrokerId(saved);
+    } else if (activeBroker) {
       setSelectedBrokerId(activeBroker.id);
     }
   }, [activeBroker]);

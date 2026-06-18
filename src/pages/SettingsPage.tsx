@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDb } from '../context/DbContext';
-import { Download, Upload, ShieldCheck, Database, ToggleLeft, ToggleRight, KeyRound, AlertTriangle } from 'lucide-react';
+import { Download, Upload, ShieldCheck, Database, ToggleLeft, ToggleRight, KeyRound, AlertTriangle, Type } from 'lucide-react';
 
 interface SettingsPageProps {
   useMock: boolean;
@@ -11,6 +11,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ useMock, onToggleMoc
   const { exportBackup, importBackup, clearAllTrades, lock } = useDb();
   
   const [backupPassword, setBackupPassword] = useState<string>('');
+  const [fontSize, setFontSize] = useState<string>(() => localStorage.getItem('stock_tool_font_size') || '100%');
+
+  const handleFontSizeChange = (size: string) => {
+    setFontSize(size);
+    localStorage.setItem('stock_tool_font_size', size);
+    document.documentElement.style.fontSize = size;
+  };
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [backupError, setBackupError] = useState<string>('');
   const [backupSuccess, setBackupSuccess] = useState<string>('');
@@ -218,7 +225,42 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ useMock, onToggleMoc
           </div>
         </div>
 
-        {/* 3. 隱私控制與鎖定 */}
+        {/* 3. 顯示與個人化設定 */}
+        <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-4">
+          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <Type className="h-4 w-4 text-emerald-400" />
+            顯示與個人化設定
+          </h2>
+          <div>
+            <span className="text-sm font-bold text-white block mb-1">字型大小 (老花眼友善調整)</span>
+            <span className="text-xs text-slate-400 mb-3 block">
+              您可以放大整個應用程式的字型，讓閱讀股價、試算與交易紀錄更清晰。
+            </span>
+            <div className="flex gap-2">
+              {[
+                { label: '標準', size: '100%' },
+                { label: '略大', size: '115%' },
+                { label: '放大', size: '130%' },
+                { label: '特大', size: '145%' }
+              ].map(item => (
+                <button
+                  key={item.size}
+                  type="button"
+                  onClick={() => handleFontSizeChange(item.size)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-smooth ${
+                    fontSize === item.size
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-md shadow-emerald-500/10'
+                      : 'bg-slate-900/30 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. 隱私控制與鎖定 */}
         <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-4">
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-rose-500" />

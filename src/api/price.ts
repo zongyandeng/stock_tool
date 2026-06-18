@@ -67,8 +67,36 @@ export class MockPriceDataSource implements IPriceDataSource {
  * 串接證交所 (TWSE) 與 Yahoo Finance 公開行情，使用 CORS 代理以避免瀏覽器跨網域限制
  */
 export class RealPriceDataSource implements IPriceDataSource {
-  // 使用免費且穩定的 allorigins CORS 代理
-  private corsProxy = 'https://api.allorigins.win/get?url=';
+  /**
+   * 使用代理伺服器發送請求，支援多個 CORS 代理的 Fallback 機制
+   */
+  private async fetchFromProxy(targetUrl: string): Promise<any> {
+    // 1. 優先使用 corsproxy.io (直接返回原始資料，適用於瀏覽器端)
+    try {
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+      const response = await fetch(proxyUrl);
+      if (response.ok) {
+        const text = await response.text();
+        return JSON.parse(text);
+      }
+    } catch (e) {
+      console.warn('corsproxy.io failed, trying allorigins fallback...', e);
+    }
+
+    // 2. 備用方案：allorigins (會包裝在 contents 欄位中)
+    try {
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+      const response = await fetch(proxyUrl);
+      if (response.ok) {
+        const json = await response.json();
+        return JSON.parse(json.contents);
+      }
+    } catch (e) {
+      console.warn('allorigins failed...', e);
+    }
+
+    throw new Error('All CORS proxies failed to fetch data');
+  }
 
   /**
    * 嘗試從台灣證券交易所 (TWSE) MIS 取得即時報價
@@ -81,13 +109,7 @@ export class RealPriceDataSource implements IPriceDataSource {
     const otcCh = `otc_${symbol}.tw`;
     
     const targetUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${tseCh}|${otcCh}`;
-    const proxyUrl = `${this.corsProxy}${encodeURIComponent(targetUrl)}`;
-
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error('TWSE HTTP request failed');
-    
-    const json = await response.json();
-    const contents = JSON.parse(json.contents);
+    const contents = await this.fetchFromProxy(targetUrl);
 
     if (!contents || !contents.msgArray || contents.msgArray.length === 0) {
       throw new Error(`TWSE returns empty data for ${symbol}`);
@@ -127,13 +149,7 @@ export class RealPriceDataSource implements IPriceDataSource {
     // 試算台股在 Yahoo 的代號格式 (通常是 2330.TW 或 2330.TWO)
     // 我們優先嘗試 .TW，失敗時通常會有返回
     const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.TW`;
-    const proxyUrl = `${this.corsProxy}${encodeURIComponent(targetUrl)}`;
-
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error('Yahoo Finance HTTP request failed');
-
-    const json = await response.json();
-    const contents = JSON.parse(json.contents);
+    const contents = await this.fetchFromProxy(targetUrl);
 
     const result = contents?.chart?.result?.[0];
     if (!result) throw new Error(`Yahoo returned empty chart for ${symbol}`);

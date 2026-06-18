@@ -3,7 +3,7 @@ import { useDb } from '../context/DbContext';
 import { priceRepository } from '../api/price';
 import type { PriceInfo } from '../api/price';
 import { optimizeStockPurchase } from '../optimizer/optimizer';
-import type { OptimizationResult, OptimizationSuggestion } from '../optimizer/optimizer';
+import type { OptimizationSuggestion } from '../optimizer/optimizer';
 import { 
   Search, Calculator, Star, Sparkles, RefreshCw, AlertCircle, 
   ChevronDown, Check, Coins, Layers
@@ -44,67 +44,14 @@ export const OptimizerPage: React.FC = () => {
   });
   const [budgetInput, setBudgetInput] = useState<string>(() => sessionStorage.getItem('opt_budget') || '100000');
 
-  // 當外部/資料庫/記帳重置時同步更新字串
-  useEffect(() => {
-    const qtyNum = parseInt(qtyInput) || 0;
-    if (qtyNum !== currentQty) {
-      setQtyInput(currentQty === 0 ? '' : String(currentQty));
-    }
-  }, [currentQty]);
 
-  useEffect(() => {
-    const avgNum = parseFloat(avgPriceInput) || 0;
-    if (avgNum !== currentAvgPrice) {
-      setAvgPriceInput(currentAvgPrice === 0 ? '' : String(currentAvgPrice));
-    }
-  }, [currentAvgPrice]);
 
-  useEffect(() => {
-    const budgetNum = parseInt(budgetInput) || 0;
-    if (budgetNum !== budget) {
-      setBudgetInput(budget === 0 ? '' : String(budget));
-    }
-  }, [budget]);
-  
-  // 試算結果
-  const [optResult, setOptResult] = useState<OptimizationResult | null>(() => {
-    try {
-      const val = sessionStorage.getItem('opt_optResult');
-      return val ? JSON.parse(val) : null;
-    } catch {
-      return null;
-    }
-  });
   const [showAllCandidates, setShowAllCandidates] = useState<boolean>(false);
   
   // 記帳備忘
   const [noteText, setNoteText] = useState<string>(() => sessionStorage.getItem('opt_noteText') || '');
   const [showSuccessToast, setShowSuccessToast] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
-
-  // 當狀態變更時，將試算狀態寫入 sessionStorage
-  useEffect(() => {
-    sessionStorage.setItem('opt_symbol', symbol);
-    sessionStorage.setItem('opt_priceInfo', priceInfo ? JSON.stringify(priceInfo) : '');
-    sessionStorage.setItem('opt_isManualPrice', String(isManualPrice));
-    sessionStorage.setItem('opt_currentQty', String(currentQty));
-    sessionStorage.setItem('opt_currentAvgPrice', String(currentAvgPrice));
-    sessionStorage.setItem('opt_targetPrice', String(targetPrice));
-    sessionStorage.setItem('opt_budget', String(budget));
-    sessionStorage.setItem('opt_selectedBrokerId', selectedBrokerId);
-    sessionStorage.setItem('opt_optResult', optResult ? JSON.stringify(optResult) : '');
-    sessionStorage.setItem('opt_noteText', noteText);
-  }, [symbol, priceInfo, isManualPrice, currentQty, currentAvgPrice, targetPrice, budget, selectedBrokerId, optResult, noteText]);
-
-  // 初始化選擇券商
-  useEffect(() => {
-    const saved = sessionStorage.getItem('opt_selectedBrokerId');
-    if (saved) {
-      setSelectedBrokerId(saved);
-    } else if (activeBroker) {
-      setSelectedBrokerId(activeBroker.id);
-    }
-  }, [activeBroker]);
 
   // 偵測輸入的股票代號是否在歷史交易中已有持股，以供一鍵填入
   const matchedHolding = React.useMemo(() => {
@@ -134,7 +81,6 @@ export const OptimizerPage: React.FC = () => {
   }, [symbol, trades]);
 
   // 新增/重構行情查詢與演算法展開狀態
-  const [errorPrompt, setErrorPrompt] = useState<string>('');
   const [showAlgoInfo, setShowAlgoInfo] = useState<boolean>(false);
 
   const fetchPriceDirectly = async (sym: string) => {
@@ -143,13 +89,11 @@ export const OptimizerPage: React.FC = () => {
     setPriceError('');
     setIsManualPrice(false);
     setPriceInfo(null);
-    setOptResult(null);
 
     try {
       const info = await priceRepository.fetchPrice(sym);
       setPriceInfo(info);
       setTargetPrice(info.price);
-      setErrorPrompt('');
     } catch (err: any) {
       setPriceError(err.message || '查詢失敗，已切換至手動輸入價格模式。');
       setIsManualPrice(true);
@@ -165,6 +109,39 @@ export const OptimizerPage: React.FC = () => {
   };
   // 選擇券商設定
   const brokerToUse = brokers.find(b => b.id === selectedBrokerId) || activeBroker;
+
+  // 衍生狀態計算 (智慧試算結果與錯誤提示)
+  const { optResult, errorPrompt } = React.useMemo(() => {
+    if (!brokerToUse) {
+      return { optResult: null, errorPrompt: '請先在設定中建立券商資料' };
+    }
+    if (targetPrice <= 0) {
+      return { optResult: null, errorPrompt: symbol ? '請輸入大於 0 的當前市價' : '' };
+    }
+    const result = optimizeStockPurchase(
+      currentQty,
+      currentAvgPrice,
+      targetPrice,
+      budget,
+      brokerToUse.discount,
+      brokerToUse.minFee
+    );
+    return { optResult: result, errorPrompt: '' };
+  }, [currentQty, currentAvgPrice, targetPrice, budget, brokerToUse, symbol]);
+
+  // 當狀態變更時，將試算狀態寫入 sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('opt_symbol', symbol);
+    sessionStorage.setItem('opt_priceInfo', priceInfo ? JSON.stringify(priceInfo) : '');
+    sessionStorage.setItem('opt_isManualPrice', String(isManualPrice));
+    sessionStorage.setItem('opt_currentQty', String(currentQty));
+    sessionStorage.setItem('opt_currentAvgPrice', String(currentAvgPrice));
+    sessionStorage.setItem('opt_targetPrice', String(targetPrice));
+    sessionStorage.setItem('opt_budget', String(budget));
+    sessionStorage.setItem('opt_selectedBrokerId', selectedBrokerId);
+    sessionStorage.setItem('opt_optResult', optResult ? JSON.stringify(optResult) : '');
+    sessionStorage.setItem('opt_noteText', noteText);
+  }, [symbol, priceInfo, isManualPrice, currentQty, currentAvgPrice, targetPrice, budget, selectedBrokerId, optResult, noteText]);
 
   // 星級評分渲染
   const renderQualityStars = (deviation: number) => {
@@ -268,7 +245,7 @@ export const OptimizerPage: React.FC = () => {
     // 計算均價變化顯示
     const diffVal = suggestion.avgPriceDiff;
     const diffPercent = suggestion.avgPriceDiffPercent;
-    let diffText = '';
+    let diffText = '無變化';
     let diffColor = 'text-slate-400';
     if (currentQty === 0) {
       diffText = '新建倉';
@@ -278,8 +255,6 @@ export const OptimizerPage: React.FC = () => {
     } else if (diffVal > 0) {
       diffText = `+${diffVal.toFixed(2)}元 (+${diffPercent.toFixed(2)}%)`;
       diffColor = 'text-rose-400';
-    } else {
-      diffText = '無變化';
     }
 
     return (
@@ -371,31 +346,7 @@ export const OptimizerPage: React.FC = () => {
     );
   };
 
-  // 即時自動計算 (當輸入變更時自動計算)
-  useEffect(() => {
-    if (!brokerToUse) {
-      setErrorPrompt('請先在設定中建立券商資料');
-      setOptResult(null);
-      return;
-    }
-    
-    if (targetPrice <= 0) {
-      setErrorPrompt(symbol ? '請輸入大於 0 的當前市價' : '');
-      setOptResult(null);
-      return;
-    }
 
-    setErrorPrompt('');
-    const result = optimizeStockPurchase(
-      currentQty,
-      currentAvgPrice,
-      targetPrice,
-      budget,
-      brokerToUse.discount,
-      brokerToUse.minFee
-    );
-    setOptResult(result);
-  }, [budget, selectedBrokerId, currentQty, currentAvgPrice, targetPrice, brokerToUse, symbol]);
 
   // 一鍵記帳
   const handleRecordTrade = async (suggestion: OptimizationSuggestion) => {
@@ -422,10 +373,14 @@ export const OptimizerPage: React.FC = () => {
         
         // 成功後重設
         setNoteText('');
+        setSymbol('');
+        setPriceInfo(null);
+        setTargetPrice(0);
         // 自動更新現有持股數 (為剛才交易後的總股數) 與均價
         setCurrentQty(suggestion.totalQty);
+        setQtyInput(suggestion.totalQty === 0 ? '' : String(suggestion.totalQty));
         setCurrentAvgPrice(suggestion.avgPrice);
-        setOptResult(null); // 清空推薦，引導下次操作
+        setAvgPriceInput(suggestion.avgPrice === 0 ? '' : String(suggestion.avgPrice));
       } catch (err) {
         console.error(err);
         alert('記帳失敗，資料庫加密未解鎖');
@@ -583,7 +538,9 @@ export const OptimizerPage: React.FC = () => {
           <button
             onClick={() => {
               setCurrentQty(matchedHolding.qty);
+              setQtyInput(String(matchedHolding.qty));
               setCurrentAvgPrice(parseFloat(matchedHolding.avgPrice.toFixed(4)));
+              setAvgPriceInput(matchedHolding.avgPrice.toFixed(4).replace(/\.?0+$/, ''));
             }}
             className="w-full text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 border border-emerald-500/20 py-2 rounded-xl transition-smooth flex items-center justify-center gap-1"
           >
@@ -684,7 +641,11 @@ export const OptimizerPage: React.FC = () => {
             max="1000000"
             step="1000"
             value={budget || 0}
-            onChange={e => setBudget(parseInt(e.target.value) || 0)}
+            onChange={e => {
+              const val = parseInt(e.target.value) || 0;
+              setBudget(val);
+              setBudgetInput(String(val));
+            }}
             className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
           />
           
@@ -694,7 +655,10 @@ export const OptimizerPage: React.FC = () => {
               <button
                 key={val}
                 type="button"
-                onClick={() => setBudget(val)}
+                onClick={() => {
+                  setBudget(val);
+                  setBudgetInput(String(val));
+                }}
                 className={`flex-1 py-1 rounded-lg text-[10px] font-bold border transition-smooth ${
                   budget === val 
                     ? 'bg-emerald-500 text-slate-950 border-emerald-500' 

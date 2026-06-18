@@ -405,7 +405,7 @@ export const OptimizerPage: React.FC = () => {
             <Sparkles className="h-4.5 w-4.5 text-emerald-400 animate-pulse" />
             台股智慧湊整投資智慧試算
           </h1>
-          <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+          <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
             輸入本次買入預算與現有持股狀態，系統將自動演算並推薦最接近「完美偶數整數均價」或「整張股數」的配置方案，優化均價的同時也能將摩擦手續費減至最低！
           </p>
         </div>
@@ -414,7 +414,7 @@ export const OptimizerPage: React.FC = () => {
 
       {/* 1. 行情查詢區塊 */}
       <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-4">
-        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+        <h2 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
           <Search className="h-3.5 w-3.5 text-emerald-400" />
           1. 台股行情即時查詢
         </h2>
@@ -425,7 +425,7 @@ export const OptimizerPage: React.FC = () => {
             value={symbol}
             onChange={e => setSymbol(e.target.value.toUpperCase())}
             placeholder="輸入台股代碼 (如 2330, 2317)"
-            className="flex-1 bg-slate-900/50 border border-slate-700/50 rounded-2xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/80 transition-smooth text-sm font-outfit"
+            className="flex-1 bg-slate-900/50 border border-slate-700/50 rounded-2xl px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500/80 transition-smooth text-sm font-outfit"
           />
           <button
             type="submit"
@@ -458,7 +458,7 @@ export const OptimizerPage: React.FC = () => {
                 setSymbol(stock.symbol);
                 fetchPriceDirectly(stock.symbol);
               }}
-              className="text-[10px] font-bold text-slate-400 bg-slate-900/30 hover:bg-slate-900/70 border border-slate-800/80 hover:border-emerald-500/50 py-1 px-2.5 rounded-full transition-smooth active:scale-95"
+              className="text-[10px] font-bold text-slate-200 bg-slate-900/50 border border-slate-700/80 hover:border-emerald-500/50 py-1 px-2.5 rounded-full transition-smooth active:scale-95"
             >
               {stock.symbol} {stock.name}
             </button>
@@ -528,7 +528,7 @@ export const OptimizerPage: React.FC = () => {
 
       {/* 2. 持股與設定輸入區塊 */}
       <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-4">
-        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+        <h2 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
           <Layers className="h-3.5 w-3.5 text-emerald-400" />
           2. 持有狀態與預算設定
         </h2>
@@ -550,7 +550,7 @@ export const OptimizerPage: React.FC = () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
+            <label className="block text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
               現有持股數 (QE)
             </label>
             <input
@@ -568,7 +568,7 @@ export const OptimizerPage: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
+            <label className="block text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
               現有持股均價 (PE)
             </label>
             <input
@@ -592,7 +592,7 @@ export const OptimizerPage: React.FC = () => {
 
         {/* 券商選擇 */}
         <div>
-          <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
+          <label className="block text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
             使用計算券商手續費
           </label>
           <div className="relative">
@@ -614,7 +614,7 @@ export const OptimizerPage: React.FC = () => {
         {/* 預算上限 */}
         <div className="space-y-2">
           <div className="flex justify-between items-center text-xs">
-            <label className="font-bold text-slate-400 uppercase tracking-wider">
+            <label className="font-bold text-slate-300 uppercase tracking-wider">
               本次買入預算上限 (B)
             </label>
             <div className="flex items-center gap-1 bg-slate-900/50 border border-slate-700/50 rounded-xl px-2.5 py-1">

@@ -100,11 +100,12 @@ export const OptimizerPage: React.FC = () => {
     return null;
   }, [symbol, trades]);
 
-  // 查詢最新行情
-  const handleFetchPrice = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!symbol.trim()) return;
+  // 新增/重構行情查詢與演算法展開狀態
+  const [errorPrompt, setErrorPrompt] = useState<string>('');
+  const [showAlgoInfo, setShowAlgoInfo] = useState<boolean>(false);
 
+  const fetchPriceDirectly = async (sym: string) => {
+    if (!sym.trim()) return;
     setIsLoadingPrice(true);
     setPriceError('');
     setIsManualPrice(false);
@@ -112,28 +113,231 @@ export const OptimizerPage: React.FC = () => {
     setOptResult(null);
 
     try {
-      const info = await priceRepository.fetchPrice(symbol);
+      const info = await priceRepository.fetchPrice(sym);
       setPriceInfo(info);
       setTargetPrice(info.price);
-      
-      // 自動填入股票代號
       setErrorPrompt('');
     } catch (err: any) {
       setPriceError(err.message || '查詢失敗，已切換至手動輸入價格模式。');
       setIsManualPrice(true);
-      // 提供一個預設值以防出錯
       setTargetPrice(0);
     } finally {
       setIsLoadingPrice(false);
     }
   };
 
-  const [errorPrompt, setErrorPrompt] = useState<string>('');
-
+  const handleFetchPrice = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    fetchPriceDirectly(symbol);
+  };
   // 選擇券商設定
   const brokerToUse = brokers.find(b => b.id === selectedBrokerId) || activeBroker;
 
-  // 開始試算
+  // 星級評分渲染
+  const renderQualityStars = (deviation: number) => {
+    let stars = 5;
+    if (deviation > 0.8) stars = 1;
+    else if (deviation > 0.5) stars = 2;
+    else if (deviation > 0.2) stars = 3;
+    else if (deviation > 0.01) stars = 4;
+    
+    return (
+      <div className="flex items-center gap-0.5">
+        {Array.from({ length: 5 }).map((_, idx) => (
+          <Star
+            key={idx}
+            className={`h-3 w-3 ${
+              idx < stars ? 'fill-amber-400 text-amber-400 font-bold' : 'text-slate-700'
+            }`}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // 股數變化比例圖 (水平條狀圖)
+  const renderQtyBar = (suggestion: any) => {
+    const total = suggestion.totalQty;
+    const prevPercent = total > 0 ? (currentQty / total) * 100 : 0;
+    const newPercent = total > 0 ? (suggestion.qtyToBuy / total) * 100 : 0;
+    return (
+      <div className="space-y-1.5 mt-2 bg-slate-900/30 p-2.5 rounded-xl border border-slate-800/40">
+        <div className="flex justify-between text-[9px] text-slate-500 font-bold uppercase tracking-wider">
+          <span>原持股: {currentQty.toLocaleString()} 股 ({Math.round(prevPercent)}%)</span>
+          <span>新買入: +{suggestion.qtyToBuy.toLocaleString()} 股 ({Math.round(newPercent)}%)</span>
+        </div>
+        <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden flex border border-slate-900">
+          <div className="bg-slate-600 h-full" style={{ width: `${prevPercent}%` }} />
+          <div className="bg-emerald-500 h-full" style={{ width: `${newPercent}%` }} />
+        </div>
+      </div>
+    );
+  };
+
+  // 均價優化軌跡
+  const renderPriceTrajectory = (suggestion: any) => {
+    const prices = [currentAvgPrice, targetPrice, suggestion.avgPrice].filter(p => p > 0);
+    if (prices.length === 0) return null;
+    const min = Math.min(...prices) * 0.99;
+    const max = Math.max(...prices) * 1.01;
+    const range = max - min;
+    const getPercent = (val: number) => {
+      if (range === 0) return 50;
+      return 15 + ((val - min) / range) * 70; // 限制在 15% - 85% 之間
+    };
+
+    const prevLeft = currentQty > 0 ? getPercent(currentAvgPrice) : 0;
+    const targetLeft = getPercent(targetPrice);
+    const newLeft = getPercent(suggestion.avgPrice);
+
+    return (
+      <div className="space-y-1.5 mt-2 bg-slate-900/30 p-2.5 rounded-xl border border-slate-800/40">
+        <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">均價變化軌跡 ($Pc / $Pe / $Pavg)</span>
+        <div className="relative h-10 mt-1">
+          {/* 軸線 */}
+          <div className="absolute top-3 left-0 right-0 h-0.5 bg-slate-800" />
+          
+          {/* 原均價點 */}
+          {currentQty > 0 && (
+            <div className="absolute flex flex-col items-center -translate-x-1/2" style={{ left: `${prevLeft}%` }}>
+              <div className="h-2 w-2 rounded-full bg-slate-500" />
+              <span className="text-[8px] text-slate-500 mt-1 font-outfit font-medium">原:${currentAvgPrice.toFixed(1)}</span>
+            </div>
+          )}
+          
+          {/* 當前市價點 */}
+          <div className="absolute flex flex-col items-center -translate-x-1/2" style={{ left: `${targetLeft}%` }}>
+            <div className="h-2 w-2 rounded-full bg-blue-500" />
+            <span className="text-[8px] text-blue-400 mt-1 font-outfit font-medium">市價:${targetPrice.toFixed(1)}</span>
+          </div>
+          
+          {/* 交易後均價點 */}
+          <div className="absolute flex flex-col items-center -translate-x-1/2 animate-pulse" style={{ left: `${newLeft}%` }}>
+            <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950" />
+            <span className="text-[8px] text-emerald-400 mt-1 font-outfit font-bold">新:${suggestion.avgPrice.toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderStrategyCard = (
+    title: string,
+    tagColor: string,
+    borderColor: string,
+    icon: React.ReactNode,
+    suggestion: any,
+    btnBgColor: string,
+    isRecommended = false
+  ) => {
+    if (!suggestion) return null;
+
+    // 計算均價變化顯示
+    const diffVal = suggestion.avgPriceDiff;
+    const diffPercent = suggestion.avgPriceDiffPercent;
+    let diffText = '';
+    let diffColor = 'text-slate-400';
+    if (currentQty === 0) {
+      diffText = '新建倉';
+    } else if (diffVal < 0) {
+      diffText = `${diffVal.toFixed(2)}元 (${diffPercent.toFixed(2)}%)`;
+      diffColor = 'text-emerald-400 font-bold';
+    } else if (diffVal > 0) {
+      diffText = `+${diffVal.toFixed(2)}元 (+${diffPercent.toFixed(2)}%)`;
+      diffColor = 'text-rose-400';
+    } else {
+      diffText = '無變化';
+    }
+
+    return (
+      <div className={`glass-panel border-l-4 ${borderColor} rounded-2xl p-5 border border-slate-800/60 shadow-xl space-y-4 relative overflow-hidden transition-smooth hover:border-slate-700/80 ${
+        isRecommended ? 'ring-1 ring-emerald-500/30 shadow-emerald-950/20' : ''
+      }`}>
+        {isRecommended && (
+          <div className="absolute right-0 top-0 bg-gradient-to-l from-amber-500/20 to-transparent text-[9px] font-black text-amber-400 py-1 px-3 rounded-bl-xl border-l border-b border-amber-500/30 tracking-wider">
+            ★ GOLDEN CHOICE
+          </div>
+        )}
+
+        {/* 標題與星等 */}
+        <div className="flex items-start justify-between">
+          <div className="space-y-1.5">
+            <span className={`flex items-center gap-1 text-[10px] font-bold ${tagColor} bg-slate-900/60 py-0.5 px-2.5 rounded-full border border-slate-800/80 w-fit`}>
+              {icon}
+              {title}
+            </span>
+            <h4 className="text-2xl font-black text-white font-outfit mt-1.5">
+              +{suggestion.qtyToBuy.toLocaleString()} <span className="text-xs text-slate-400 font-normal">股</span>
+            </h4>
+          </div>
+          <div className="text-right space-y-1">
+            <span className="text-[9px] text-slate-500 block uppercase tracking-wider">配置品質</span>
+            {renderQualityStars(suggestion.evenDeviation)}
+            <span className="text-[8px] text-slate-400 block font-outfit">偏差: {suggestion.evenDeviation.toFixed(4).replace(/\.?0+$/, '')}</span>
+          </div>
+        </div>
+
+        {/* 5大指標九宮格網格 */}
+        <div className="grid grid-cols-2 gap-2.5 bg-slate-950/40 p-3.5 rounded-xl border border-slate-900 text-xs">
+          <div>
+            <span className="text-[9px] text-slate-500 block">預算利用率</span>
+            <strong className="text-slate-200 font-outfit font-bold">
+              {suggestion.capitalEfficiency.toFixed(1)}%
+            </strong>
+            <span className="text-[8px] text-slate-500 block mt-0.5">({suggestion.cost.toLocaleString()} 元)</span>
+          </div>
+          <div>
+            <span className="text-[9px] text-slate-500 block">剩餘預算</span>
+            <strong className="text-slate-200 font-outfit font-bold">
+              ${Math.floor(suggestion.remainingBudget).toLocaleString()} <span className="text-[9px] font-normal text-slate-400">元</span>
+            </strong>
+          </div>
+          <div className="border-t border-slate-900/80 pt-2 col-span-2 flex justify-between">
+            <div>
+              <span className="text-[9px] text-slate-500 block">交易後持有均價</span>
+              <strong className="text-white font-outfit font-extrabold text-sm">
+                ${suggestion.avgPrice.toFixed(2)} <span className="text-[9px] font-normal text-slate-400">元</span>
+              </strong>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] text-slate-500 block">均價成本變化</span>
+              <strong className={`font-outfit text-[11px] ${diffColor}`}>
+                {diffText}
+              </strong>
+            </div>
+          </div>
+          <div className="border-t border-slate-900/80 pt-2 col-span-2 flex justify-between">
+            <div>
+              <span className="text-[9px] text-slate-500 block">持股股數增加比率</span>
+              <strong className="text-slate-300 font-outfit font-bold">
+                +{suggestion.qtyIncreasePercent.toFixed(1)}%
+              </strong>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] text-slate-500 block">交易後總市值</span>
+              <strong className="text-slate-300 font-outfit font-bold">
+                ${Math.floor(suggestion.postMarketValue).toLocaleString()} 元
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        {/* 視覺化圖表：股數條形圖與均價軌跡 */}
+        <div className="space-y-2">
+          {renderQtyBar(suggestion)}
+          {renderPriceTrajectory(suggestion)}
+        </div>
+
+        <button
+          onClick={() => handleRecordTrade(suggestion)}
+          className={`w-full ${btnBgColor} hover:brightness-110 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition-smooth shadow-md active:scale-98`}
+        >
+          一鍵記錄此筆交易
+        </button>
+      </div>
+    );
+  };
+
   const handleCalculate = () => {
     if (targetPrice <= 0) {
       setErrorPrompt('請輸入大於 0 的當前市價');
@@ -218,6 +422,20 @@ export const OptimizerPage: React.FC = () => {
         </div>
       )}
 
+      {/* Hero 說明區塊 */}
+      <div className="relative overflow-hidden rounded-3xl p-5 bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/20 border border-slate-800 shadow-2xl">
+        <div className="relative z-10 space-y-2">
+          <h1 className="text-base font-extrabold text-white tracking-tight font-outfit flex items-center gap-2">
+            <Sparkles className="h-4.5 w-4.5 text-emerald-400 animate-pulse" />
+            台股智慧湊整投資智慧試算
+          </h1>
+          <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+            輸入本次買入預算與現有持股狀態，系統將自動演算並推薦最接近「完美偶數整數均價」或「整張股數」的配置方案，優化均價的同時也能將摩擦手續費減至最低！
+          </p>
+        </div>
+        <div className="absolute -right-8 -bottom-8 h-24 w-24 rounded-full bg-emerald-500/5 blur-xl pointer-events-none" />
+      </div>
+
       {/* 1. 行情查詢區塊 */}
       <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-4">
         <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -248,6 +466,28 @@ export const OptimizerPage: React.FC = () => {
             )}
           </button>
         </form>
+
+        {/* 熱門股票快捷標籤 */}
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {[
+            { symbol: '2330', name: '台積電' },
+            { symbol: '2317', name: '鴻海' },
+            { symbol: '0050', name: '元大台灣50' },
+            { symbol: '00878', name: '國泰永續高股息' }
+          ].map(stock => (
+            <button
+              key={stock.symbol}
+              type="button"
+              onClick={() => {
+                setSymbol(stock.symbol);
+                fetchPriceDirectly(stock.symbol);
+              }}
+              className="text-[10px] font-bold text-slate-400 bg-slate-900/30 hover:bg-slate-900/70 border border-slate-800/80 hover:border-emerald-500/50 py-1 px-2.5 rounded-full transition-smooth active:scale-95"
+            >
+              {stock.symbol} {stock.name}
+            </button>
+          ))}
+        </div>
 
         {/* 查詢結果 */}
         {priceError && (
@@ -463,132 +703,34 @@ export const OptimizerPage: React.FC = () => {
           {/* 三大策略卡片 */}
           <div className="space-y-4">
             {/* 策略 A: 均價整數優先 */}
-            {optResult.perfect && (
-              <div className="glass-panel border-l-4 border-l-emerald-500 rounded-2xl p-4 border border-slate-800/60 shadow-xl space-y-3 relative overflow-hidden">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 py-0.5 px-2.5 rounded-full border border-emerald-500/20 w-fit">
-                      <Star className="h-3 w-3 fill-current" />
-                      完美均價整數優先 (推薦)
-                    </span>
-                    <h4 className="text-2xl font-black text-white font-outfit mt-2">
-                      +{optResult.perfect.qtyToBuy.toLocaleString()} <span className="text-xs text-slate-400 font-normal">股</span>
-                    </h4>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[9px] text-slate-500 block">偏差度</span>
-                    <strong className="text-sm font-bold text-slate-200 font-outfit block mt-0.5">
-                      {optResult.perfect.evenDeviation.toFixed(4).replace(/\.?0+$/, '')}
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-850 text-xs">
-                  <div>
-                    <span className="text-[9px] text-slate-500 block">需準備資金 (含手續費)</span>
-                    <strong className="text-slate-200 font-outfit font-bold">${optResult.perfect.cost.toLocaleString()} 元</strong>
-                    <span className="text-[8px] text-slate-500 block mt-0.5">(手續費: ${optResult.perfect.fee} 元)</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-slate-500 block">交易後持有均價</span>
-                    <strong className="text-emerald-400 font-outfit font-bold">${optResult.perfect.avgPrice.toFixed(4).replace(/\.?0+$/, '')} 元</strong>
-                    <span className="text-[8px] text-slate-500 block mt-0.5">(交易後總股數: {optResult.perfect.totalQty.toLocaleString()} 股)</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleRecordTrade(optResult.perfect!)}
-                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2 rounded-xl text-xs transition-smooth shadow-md shadow-emerald-500/10 active:scale-95"
-                >
-                  一鍵記錄此筆交易
-                </button>
-              </div>
+            {optResult.perfect && renderStrategyCard(
+              "完美均價整數優先 (推薦)", 
+              "text-amber-400", 
+              "border-l-amber-500", 
+              <Star className="h-3 w-3 fill-current text-amber-400" />, 
+              optResult.perfect, 
+              "bg-emerald-500 hover:bg-emerald-400", 
+              true
             )}
 
             {/* 策略 B: 整張股數優先 */}
-            {optResult.quantity && optResult.quantity.qtyToBuy !== optResult.perfect?.qtyToBuy && (
-              <div className="glass-panel border-l-4 border-l-blue-500 rounded-2xl p-4 border border-slate-800/60 shadow-xl space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-500/10 py-0.5 px-2.5 rounded-full border border-blue-500/20 w-fit">
-                      <Layers className="h-3 w-3" />
-                      整張股數湊整優先
-                    </span>
-                    <h4 className="text-2xl font-black text-white font-outfit mt-2">
-                      +{optResult.quantity.qtyToBuy.toLocaleString()} <span className="text-xs text-slate-400 font-normal">股</span>
-                    </h4>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[9px] text-slate-500 block">偏差度</span>
-                    <strong className="text-sm font-bold text-slate-200 font-outfit block mt-0.5">
-                      {optResult.quantity.evenDeviation.toFixed(4).replace(/\.?0+$/, '')}
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-850 text-xs">
-                  <div>
-                    <span className="text-[9px] text-slate-500 block">需準備資金 (含手續費)</span>
-                    <strong className="text-slate-200 font-outfit font-bold">${optResult.quantity.cost.toLocaleString()} 元</strong>
-                    <span className="text-[8px] text-slate-500 block mt-0.5">(手續費: ${optResult.quantity.fee} 元)</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-slate-500 block">交易後持有均價</span>
-                    <strong className="text-blue-400 font-outfit font-bold">${optResult.quantity.avgPrice.toFixed(4).replace(/\.?0+$/, '')} 元</strong>
-                    <span className="text-[8px] text-slate-500 block mt-0.5">(交易後總股數: {optResult.quantity.totalQty.toLocaleString()} 股)</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleRecordTrade(optResult.quantity!)}
-                  className="w-full bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold py-2 rounded-xl text-xs transition-smooth shadow-md shadow-blue-500/10 active:scale-95"
-                >
-                  一鍵記錄此筆交易
-                </button>
-              </div>
+            {optResult.quantity && optResult.quantity.qtyToBuy !== optResult.perfect?.qtyToBuy && renderStrategyCard(
+              "整張股數湊整優先", 
+              "text-blue-400", 
+              "border-l-blue-500", 
+              <Layers className="h-3 w-3 text-blue-400" />, 
+              optResult.quantity, 
+              "bg-blue-500 hover:bg-blue-400"
             )}
 
             {/* 策略 C: 預算最大化 */}
-            {optResult.budgetMax && optResult.budgetMax.qtyToBuy !== optResult.perfect?.qtyToBuy && optResult.budgetMax.qtyToBuy !== optResult.quantity?.qtyToBuy && (
-              <div className="glass-panel border-l-4 border-l-purple-500 rounded-2xl p-4 border border-slate-800/60 shadow-xl space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-purple-400 bg-purple-500/10 py-0.5 px-2.5 rounded-full border border-purple-500/20 w-fit">
-                      <Coins className="h-3 w-3" />
-                      預算利用最大化
-                    </span>
-                    <h4 className="text-2xl font-black text-white font-outfit mt-2">
-                      +{optResult.budgetMax.qtyToBuy.toLocaleString()} <span className="text-xs text-slate-400 font-normal">股</span>
-                    </h4>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[9px] text-slate-500 block">偏差度</span>
-                    <strong className="text-sm font-bold text-slate-200 font-outfit block mt-0.5">
-                      {optResult.budgetMax.evenDeviation.toFixed(4).replace(/\.?0+$/, '')}
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-850 text-xs">
-                  <div>
-                    <span className="text-[9px] text-slate-500 block">需準備資金 (含手續費)</span>
-                    <strong className="text-slate-200 font-outfit font-bold">${optResult.budgetMax.cost.toLocaleString()} 元</strong>
-                    <span className="text-[8px] text-slate-500 block mt-0.5">(手續費: ${optResult.budgetMax.fee} 元)</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-slate-500 block">交易後持有均價</span>
-                    <strong className="text-purple-400 font-outfit font-bold">${optResult.budgetMax.avgPrice.toFixed(4).replace(/\.?0+$/, '')} 元</strong>
-                    <span className="text-[8px] text-slate-500 block mt-0.5">(交易後總股數: {optResult.budgetMax.totalQty.toLocaleString()} 股)</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleRecordTrade(optResult.budgetMax!)}
-                  className="w-full bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold py-2 rounded-xl text-xs transition-smooth shadow-md shadow-purple-500/10 active:scale-95"
-                >
-                  一鍵記錄此筆交易
-                </button>
-              </div>
+            {optResult.budgetMax && optResult.budgetMax.qtyToBuy !== optResult.perfect?.qtyToBuy && optResult.budgetMax.qtyToBuy !== optResult.quantity?.qtyToBuy && renderStrategyCard(
+              "預算利用最大化", 
+              "text-purple-400", 
+              "border-l-purple-500", 
+              <Coins className="h-3 w-3 text-purple-400" />, 
+              optResult.budgetMax, 
+              "bg-purple-500 hover:bg-purple-400"
             )}
           </div>
 
@@ -634,6 +776,39 @@ export const OptimizerPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 💡 智慧湊整演算法運作原理 */}
+      <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-3">
+        <button
+          onClick={() => setShowAlgoInfo(!showAlgoInfo)}
+          className="w-full flex items-center justify-between text-left focus:outline-none"
+        >
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Calculator className="h-3.5 w-3.5 text-emerald-400" />
+            💡 智慧湊整演算法運作原理
+          </h2>
+          <span className="text-xs text-slate-500 font-bold">
+            {showAlgoInfo ? '收合 ▲' : '了解更多 ▼'}
+          </span>
+        </button>
+
+        {showAlgoInfo && (
+          <div className="text-[11px] text-slate-400 leading-relaxed space-y-3 pt-2 border-t border-slate-900">
+            <div>
+              <strong className="text-white block mb-0.5">步驟一：搜尋空間過濾 (Candidates Search)</strong>
+              <p>為了防範預算極大時，逐股窮舉（例如幾十萬股）導致瀏覽器網頁畫面卡死，演算法會在最大股數大於 5,000 股時，智慧生成關鍵候選集合。該集合包含：1-999 股的所有零股、整百與整張股數，以及能使交易後總股數剛好湊滿最近整百與整張的「互補股數」，精準過濾無用搜尋空間。</p>
+            </div>
+            <div>
+              <strong className="text-white block mb-0.5">步驟二：多目標優化計算 (Multi-Objective Evaluation)</strong>
+              <p>針對每個擬購入股數候選人，精算其包含折扣後的券商手續費、實際交易金額、交易後之新總股數與新持有均價 $P_&#123;avg&#125; = (Q_e P_e + Q_n P_c + F_n) / (Q_e + Q_n)$。接著，計算該均價與最近偶數整數的絕對偏差（Deviation）。</p>
+            </div>
+            <div>
+              <strong className="text-white block mb-0.5">步驟三：權重獎勵與黃金策略推薦</strong>
+              <p>當交易後總股數為整張（1000 的倍數）或整百股時，給予評分獎勵。最後，結合偏差度與股數湊整度進行加權算分。綜合分數最低的將作為三大策略推薦：最完美整除的「完美均價整數優先」、股數最平整的「整股湊整優先」，與花費最接近預算的「預算利用最大化」。</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

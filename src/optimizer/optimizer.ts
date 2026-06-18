@@ -12,6 +12,12 @@ export interface OptimizationSuggestion {
   evenDeviation: number;  // 均價與最近偶數整數的絕對偏差 Sdev
   isPerfect: boolean;     // 是否完美整除且為偶數
   score: number;          // 綜合評分 (分數越低越優)
+  capitalEfficiency: number;  // 投入資金利用率 (%)
+  remainingBudget: number;    // 剩餘資金金額
+  avgPriceDiff: number;       // 買入前後平均成本變化 (元)
+  avgPriceDiffPercent: number; // 買入前後平均成本變化比例 (%)
+  qtyIncreasePercent: number;  // 持股股數增加比例 (%)
+  postMarketValue: number;     // 本次交易後總持股市值
 }
 
 export interface OptimizationResult {
@@ -73,7 +79,7 @@ export function generateCandidates(
     candidatesSet.add(i);
   }
 
-  // C. 互補湊整股數：能使交易後總股數 Qt = Qe + Qn 剛好湊滿最近的 100 或 1000 倍數的 Qn
+  // C. 互補湊整股數：能使交易後總股數 Qt = Qe + Qn 剛好湊滿最近 of 100 或 1000 倍數的 Qn
   // 湊滿整千(整張)的互補股數
   const oddToThousand = 1000 - (currentQty % 1000);
   if (oddToThousand > 0 && oddToThousand <= maxQty) {
@@ -148,6 +154,14 @@ export function optimizeStockPurchase(
     // 評分 (Score = Sdev - Rqty)。分數越低代表越優
     const score = evenDeviation - qtyReward;
 
+    // 新增指標計算
+    const capitalEfficiency = (purchaseCost / budget) * 100;
+    const remainingBudget = budget - purchaseCost;
+    const avgPriceDiff = currentQty === 0 ? 0 : avgPrice - currentAvgPrice;
+    const avgPriceDiffPercent = currentQty === 0 ? 0 : ((avgPrice - currentAvgPrice) / currentAvgPrice) * 100;
+    const qtyIncreasePercent = currentQty === 0 ? 100 : (qn / currentQty) * 100;
+    const postMarketValue = totalQty * currentPrice;
+
     suggestions.push({
       qtyToBuy: qn,
       cost: purchaseCost,
@@ -156,7 +170,13 @@ export function optimizeStockPurchase(
       avgPrice,
       evenDeviation,
       isPerfect,
-      score
+      score,
+      capitalEfficiency,
+      remainingBudget,
+      avgPriceDiff,
+      avgPriceDiffPercent,
+      qtyIncreasePercent,
+      postMarketValue
     });
   }
 

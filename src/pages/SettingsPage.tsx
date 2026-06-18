@@ -284,6 +284,51 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ useMock, onToggleMoc
           </div>
         </div>
 
+        {/* 5. 未來發展藍圖 (Roadmap) */}
+        <div className="glass-panel rounded-3xl p-5 border border-slate-800/60 shadow-xl space-y-4">
+          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <span className="text-emerald-400">🚀</span>
+            未來發展藍圖 (Roadmap)
+          </h2>
+          
+          <div className="space-y-4 text-xs">
+            <div className="relative pl-5 border-l border-emerald-500/30">
+              <div className="absolute -left-1 top-0.5 h-2 w-2 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/50" />
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <span>階段一：複數持股投資組合優化</span>
+                <span className="bg-emerald-500/10 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded font-black">規劃中</span>
+              </div>
+              <p className="text-slate-400 mt-1 text-[11px] leading-relaxed">
+                支援多檔個股的資產配置目標比例試算。使用者輸入理想配置百分比（例如：台積電 40%, 鴻海 30%...），系統一鍵計算使整體投資組合最接近目標比例且均價最優的購買組合。
+              </p>
+            </div>
+
+            <div className="relative pl-5 border-l border-slate-800">
+              <div className="absolute -left-1 top-0.5 h-2 w-2 rounded-full bg-slate-700" />
+              <div className="font-bold text-slate-300">階段二：定期定額湊整歷史回測</div>
+              <p className="text-slate-500 mt-1 text-[11px] leading-relaxed">
+                引入台股歷史股價數據，模擬並回測「智慧湊整定期定額」與「傳統定期定額」的實際扣款成果。量化比較兩者在均價整平度、與手續費摩擦成本上的磨損差異。
+              </p>
+            </div>
+
+            <div className="relative pl-5 border-l border-slate-800">
+              <div className="absolute -left-1 top-0.5 h-2 w-2 rounded-full bg-slate-700" />
+              <div className="font-bold text-slate-300">階段三：風險評估與績效分析</div>
+              <p className="text-slate-500 mt-1 text-[11px] leading-relaxed">
+                計算投資組合的 Beta 值、波動度與夏普值（Sharpe Ratio），並與台灣加權指數（大盤）進行自動績效對比，評估整數化持股偏好在風險分散上的實際表現。
+              </p>
+            </div>
+            
+            <div className="relative pl-5">
+              <div className="absolute -left-1 top-0.5 h-2 w-2 rounded-full bg-slate-700" />
+              <div className="font-bold text-slate-300">階段四：證券商 API 自動下單串接</div>
+              <p className="text-slate-500 mt-1 text-[11px] leading-relaxed">
+                與合作國內券商 API 進行串接，實現試算完畢後「一鍵送出委託單」，讓智慧配股從算帳、記帳，跨越到自動下單交易閉環。
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* 版本資訊 */}
         <div className="text-center text-[10px] text-slate-600 font-outfit">
           台股整數化試算工具 v1.0.0 (PWA RWD) <br />

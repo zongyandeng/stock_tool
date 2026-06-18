@@ -32,6 +32,39 @@ export const OptimizerPage: React.FC = () => {
   const [targetPrice, setTargetPrice] = useState<number>(() => parseFloat(sessionStorage.getItem('opt_targetPrice') || '0')); // Pc (試算時用的股價)
   const [budget, setBudget] = useState<number>(() => parseInt(sessionStorage.getItem('opt_budget') || '100000')); // 預設 10 萬元
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>(() => sessionStorage.getItem('opt_selectedBrokerId') || '');
+
+  // 用於 UI 顯示與限制輸入的字串狀態
+  const [qtyInput, setQtyInput] = useState<string>(() => {
+    const val = sessionStorage.getItem('opt_currentQty') || '0';
+    return val === '0' ? '' : val;
+  });
+  const [avgPriceInput, setAvgPriceInput] = useState<string>(() => {
+    const val = sessionStorage.getItem('opt_currentAvgPrice') || '0';
+    return val === '0' ? '' : val;
+  });
+  const [budgetInput, setBudgetInput] = useState<string>(() => sessionStorage.getItem('opt_budget') || '100000');
+
+  // 當外部/資料庫/記帳重置時同步更新字串
+  useEffect(() => {
+    const qtyNum = parseInt(qtyInput) || 0;
+    if (qtyNum !== currentQty) {
+      setQtyInput(currentQty === 0 ? '' : String(currentQty));
+    }
+  }, [currentQty]);
+
+  useEffect(() => {
+    const avgNum = parseFloat(avgPriceInput) || 0;
+    if (avgNum !== currentAvgPrice) {
+      setAvgPriceInput(currentAvgPrice === 0 ? '' : String(currentAvgPrice));
+    }
+  }, [currentAvgPrice]);
+
+  useEffect(() => {
+    const budgetNum = parseInt(budgetInput) || 0;
+    if (budgetNum !== budget) {
+      setBudgetInput(budget === 0 ? '' : String(budget));
+    }
+  }, [budget]);
   
   // 試算結果
   const [optResult, setOptResult] = useState<OptimizationResult | null>(() => {
@@ -338,18 +371,21 @@ export const OptimizerPage: React.FC = () => {
     );
   };
 
-  const handleCalculate = () => {
-    if (targetPrice <= 0) {
-      setErrorPrompt('請輸入大於 0 的當前市價');
-      return;
-    }
+  // 即時自動計算 (當輸入變更時自動計算)
+  useEffect(() => {
     if (!brokerToUse) {
       setErrorPrompt('請先在設定中建立券商資料');
+      setOptResult(null);
+      return;
+    }
+    
+    if (targetPrice <= 0) {
+      setErrorPrompt(symbol ? '請輸入大於 0 的當前市價' : '');
+      setOptResult(null);
       return;
     }
 
     setErrorPrompt('');
-
     const result = optimizeStockPurchase(
       currentQty,
       currentAvgPrice,
@@ -359,22 +395,7 @@ export const OptimizerPage: React.FC = () => {
       brokerToUse.minFee
     );
     setOptResult(result);
-  };
-
-  // 即時重新計算 (當 budget, broker 變更時，若已有結果則自動重算)
-  useEffect(() => {
-    if (targetPrice > 0 && brokerToUse) {
-      const result = optimizeStockPurchase(
-        currentQty,
-        currentAvgPrice,
-        targetPrice,
-        budget,
-        brokerToUse.discount,
-        brokerToUse.minFee
-      );
-      setOptResult(result);
-    }
-  }, [budget, selectedBrokerId, currentQty, currentAvgPrice, targetPrice]);
+  }, [budget, selectedBrokerId, currentQty, currentAvgPrice, targetPrice, brokerToUse, symbol]);
 
   // 一鍵記帳
   const handleRecordTrade = async (suggestion: OptimizationSuggestion) => {
@@ -573,26 +594,40 @@ export const OptimizerPage: React.FC = () => {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
-              現有持股數 (Qe)
+              現有持股數 (QE)
             </label>
             <input
-              type="number"
-              value={currentQty || ''}
-              onChange={e => setCurrentQty(parseInt(e.target.value) || 0)}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={qtyInput}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                setQtyInput(val);
+                setCurrentQty(val ? parseInt(val) : 0);
+              }}
               placeholder="0 (無持股)"
               className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500/80 text-xs font-outfit"
             />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
-              現有持股均價 (Pe)
+              現有持股均價 (PE)
             </label>
             <input
-              type="number"
-              value={currentAvgPrice || ''}
-              onChange={e => setCurrentAvgPrice(parseFloat(e.target.value) || 0)}
+              type="text"
+              inputMode="decimal"
+              value={avgPriceInput}
+              onChange={e => {
+                let val = e.target.value.replace(/[^0-9.]/g, '');
+                const parts = val.split('.');
+                if (parts.length > 2) {
+                  val = parts[0] + '.' + parts.slice(1).join('');
+                }
+                setAvgPriceInput(val);
+                setCurrentAvgPrice(val ? parseFloat(val) : 0);
+              }}
               placeholder="0.0"
-              step="any"
               className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500/80 text-xs font-outfit"
             />
           </div>
@@ -625,9 +660,22 @@ export const OptimizerPage: React.FC = () => {
             <label className="font-bold text-slate-400 uppercase tracking-wider">
               本次買入預算上限 (B)
             </label>
-            <strong className="text-emerald-400 font-black font-outfit">
-              ${budget.toLocaleString()} 元
-            </strong>
+            <div className="flex items-center gap-1 bg-slate-900/50 border border-slate-700/50 rounded-xl px-2.5 py-1">
+              <span className="text-emerald-400 font-bold">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={budgetInput}
+                onChange={e => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setBudgetInput(val);
+                  setBudget(val ? parseInt(val) : 0);
+                }}
+                className="w-20 bg-transparent text-emerald-400 font-black font-outfit focus:outline-none text-right"
+              />
+              <span className="text-emerald-400 font-bold">元</span>
+            </div>
           </div>
           
           <input
@@ -635,8 +683,8 @@ export const OptimizerPage: React.FC = () => {
             min="1000"
             max="1000000"
             step="1000"
-            value={budget}
-            onChange={e => setBudget(parseInt(e.target.value))}
+            value={budget || 0}
+            onChange={e => setBudget(parseInt(e.target.value) || 0)}
             className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
           />
           
@@ -664,15 +712,6 @@ export const OptimizerPage: React.FC = () => {
             {errorPrompt}
           </div>
         )}
-
-        <button
-          onClick={handleCalculate}
-          disabled={targetPrice <= 0}
-          className="w-full flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold py-3 rounded-2xl transition-smooth shadow-lg shadow-emerald-500/10 active:scale-95 text-sm"
-        >
-          <Calculator className="h-4.5 w-4.5" />
-          開始智慧湊整試算
-        </button>
       </div>
 
       {/* 3. 試算推薦展示區塊 */}
